@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora de Despesas</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body>
+    <header>
+        <h1>Minhas Despesas</h1>
+        <p>Organize suas finanças de forma simples e visual.</p>
+    </header>
+    
+    <main>
+        <section class="income-section">
+            <div class="input-group">
+                <label for="salary">Salário Líquido (R$)</label>
+                <input type="number" id="salary" placeholder="0,00" step="0.01" min="0">
+            </div>
+        </section>
+
+        <section class="expenses-section">
+            <h2>Despesas</h2>
+            <div id="expenses-list">
+                <!-- Campos de despesa são adicionados aqui via JavaScript -->
+            </div>
+            <button id="add-expense-btn" class="secondary-btn">➕ Adicionar mais campos</button>
+        </section>
+
+        <section class="results-section">
+            <div class="summary">
+                <div class="summary-item">
+                    <h3>Despesas totais</h3>
+                    <p id="total-expenses">R$ 0,00</p>
+                </div>
+                <div class="summary-item">
+                    <h3>Saldo restante</h3>
+                    <p id="remaining-balance">R$ 0,00</p>
+                </div>
+            </div>
+
+            <button id="clear-all-btn">🗑️ Limpar todos os campos</button>
+        </section>
+    </main>
+    
+    <footer>
+        <p>© 2025 Minhas Despesas. Todos os direitos reservados.</p>
+    </footer>
+
+    <!-- Contêiner para as notificações (toast) -->
+    <div id="toast-container"></div>
+
+    <script src="script.js"></script>
+</body>
+</html>
