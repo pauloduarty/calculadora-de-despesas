@@ -7,8 +7,23 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearAllBtn = document.getElementById('clear-all-btn');
     const addExpenseBtn = document.getElementById('add-expense-btn');
     const toastContainer = document.getElementById('toast-container');
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    const themeToggleIcon = themeToggleBtn.querySelector('i');
+    const themeToggleLabel = themeToggleBtn.querySelector('span');
+    const dashboardSalaryDisplay = document.getElementById('dashboard-salary');
+    const dashboardPaidDisplay = document.getElementById('dashboard-paid');
+    const dashboardBalanceDisplay = document.getElementById('dashboard-balance');
+    const dashboardPendingDisplay = document.getElementById('dashboard-pending');
+    const budgetProgressFill = document.getElementById('budget-progress-fill');
+    const budgetProgressLabel = document.getElementById('budget-progress-label');
+    const statusChartCanvas = document.getElementById('status-chart');
+    const expensesChartCanvas = document.getElementById('expenses-chart');
 
     let expenseFields = [];
+    const themeStorageKey = 'expenseCalculatorTheme';
+    let dashboardState = null;
+    let statusChart = null;
+    let expensesChart = null;
 
     // Nomes padrão para as despesas
     const defaultExpenseNames = [
@@ -29,6 +44,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Configurar event listeners
     setupEventListeners();
+
+    // Configurar o tema preferido do usuário
+    initializeTheme();
 
     // Carregar dados salvos ao iniciar
     loadFromLocalStorage();
@@ -166,6 +184,239 @@ document.addEventListener('DOMContentLoaded', function() {
         salaryInput.addEventListener('input', updateCalculations);
         clearAllBtn.addEventListener('click', clearAllFields);
         addExpenseBtn.addEventListener('click', () => createExpenseField());
+        themeToggleBtn.addEventListener('click', toggleTheme);
+    }
+
+    function initializeTheme() {
+        const savedTheme = localStorage.getItem(themeStorageKey);
+        const preferredTheme = savedTheme || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        applyTheme(preferredTheme);
+    }
+
+    function applyTheme(theme) {
+        const nextTheme = theme === 'dark' ? 'dark' : 'light';
+        if (nextTheme === 'dark') {
+            document.body.dataset.theme = 'dark';
+            themeToggleIcon.className = 'fa-solid fa-sun';
+            themeToggleLabel.textContent = 'Modo claro';
+            themeToggleBtn.setAttribute('aria-pressed', 'true');
+        } else {
+            document.body.removeAttribute('data-theme');
+            themeToggleIcon.className = 'fa-solid fa-moon';
+            themeToggleLabel.textContent = 'Modo escuro';
+            themeToggleBtn.setAttribute('aria-pressed', 'false');
+        }
+
+        document.documentElement.style.colorScheme = nextTheme;
+        localStorage.setItem(themeStorageKey, nextTheme);
+
+        if (dashboardState) {
+            renderDashboardCharts(dashboardState);
+        }
+    }
+
+    function toggleTheme() {
+        const currentTheme = document.body.dataset.theme === 'dark' ? 'dark' : 'light';
+        applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+    }
+
+    function getDashboardPalette() {
+        const styles = getComputedStyle(document.body);
+        return {
+            paid: styles.getPropertyValue('--chart-paid').trim() || '#22c55e',
+            pending: styles.getPropertyValue('--chart-pending').trim() || '#f59e0b',
+            accent: styles.getPropertyValue('--chart-accent').trim() || '#2563eb',
+            grid: styles.getPropertyValue('--chart-grid').trim() || 'rgba(100, 116, 139, 0.18)',
+            text: styles.getPropertyValue('--chart-text').trim() || '#475569',
+            progressTrack: styles.getPropertyValue('--progress-track').trim() || 'rgba(148, 163, 184, 0.18)'
+        };
+    }
+
+    function formatPercent(value) {
+        return `${Math.round(value)}%`;
+    }
+
+    function truncateLabel(label, maxLength = 18) {
+        if (label.length <= maxLength) {
+            return label;
+        }
+
+        return `${label.slice(0, maxLength - 1)}…`;
+    }
+
+    function updateDashboard(totalExpenses, remainingBalance) {
+        const salary = parseFloat(salaryInput.value) || 0;
+        const paidExpenses = expenseFields.filter(field => field.statusSelect.value === 'paid');
+        const pendingExpenses = expenseFields.filter(field => field.statusSelect.value === 'pending');
+        const usagePercent = salary > 0 ? Math.min((totalExpenses / salary) * 100, 100) : 0;
+
+        dashboardState = {
+            salary,
+            totalExpenses,
+            remainingBalance,
+            paidCount: paidExpenses.length,
+            pendingCount: pendingExpenses.length,
+            expenseItems: expenseFields.map(field => ({
+                name: field.nameInput.value || 'Despesa sem nome',
+                value: parseFloat(field.valueInput.value) || 0,
+                status: field.statusSelect.value
+            }))
+        };
+
+        dashboardSalaryDisplay.textContent = formatCurrency(salary);
+        dashboardPaidDisplay.textContent = formatCurrency(totalExpenses);
+        dashboardBalanceDisplay.textContent = formatCurrency(remainingBalance);
+        dashboardPendingDisplay.textContent = `${dashboardState.pendingCount} ${dashboardState.pendingCount === 1 ? 'item' : 'itens'}`;
+        budgetProgressLabel.textContent = formatPercent(usagePercent);
+        budgetProgressFill.style.width = `${usagePercent}%`;
+
+        renderDashboardCharts(dashboardState);
+    }
+
+    function destroyCharts() {
+        if (statusChart) {
+            statusChart.destroy();
+            statusChart = null;
+        }
+
+        if (expensesChart) {
+            expensesChart.destroy();
+            expensesChart = null;
+        }
+    }
+
+    function renderDashboardCharts(state) {
+        if (typeof Chart === 'undefined') {
+            return;
+        }
+
+        const palette = getDashboardPalette();
+        const statusLabels = ['Pagas', 'Pendentes'];
+        const statusValues = [state.paidCount, state.pendingCount];
+        const topExpenses = [...state.expenseItems]
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 6);
+        const expenseLabels = topExpenses.map(item => truncateLabel(item.name));
+        const expenseValues = topExpenses.map(item => item.value);
+        const expenseColors = topExpenses.map(item => item.status === 'paid' ? palette.paid : palette.pending);
+
+        if (statusChartCanvas) {
+            if (!statusChart) {
+                statusChart = new Chart(statusChartCanvas, {
+                    type: 'doughnut',
+                    data: {
+                        labels: statusLabels,
+                        datasets: [{
+                            data: statusValues,
+                            backgroundColor: [palette.paid, palette.pending],
+                            borderColor: palette.grid,
+                            borderWidth: 1,
+                            hoverOffset: 8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: {
+                                    color: palette.text,
+                                    usePointStyle: true,
+                                    pointStyle: 'circle',
+                                    boxWidth: 10
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label(context) {
+                                        const total = context.dataset.data.reduce((sum, value) => sum + value, 0) || 1;
+                                        const value = context.parsed || 0;
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        return ` ${context.label}: ${value} (${percentage}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                statusChart.data.labels = statusLabels;
+                statusChart.data.datasets[0].data = statusValues;
+                statusChart.data.datasets[0].backgroundColor = [palette.paid, palette.pending];
+                statusChart.data.datasets[0].borderColor = palette.grid;
+                statusChart.options.plugins.legend.labels.color = palette.text;
+                statusChart.update();
+            }
+        }
+
+        if (expensesChartCanvas) {
+            if (!expensesChart) {
+                expensesChart = new Chart(expensesChartCanvas, {
+                    type: 'bar',
+                    data: {
+                        labels: expenseLabels,
+                        datasets: [{
+                            label: 'Valor (R$)',
+                            data: expenseValues,
+                            backgroundColor: expenseColors,
+                            borderRadius: 10,
+                            borderSkipped: false
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        scales: {
+                            x: {
+                                beginAtZero: true,
+                                grid: {
+                                    color: palette.grid
+                                },
+                                ticks: {
+                                    color: palette.text,
+                                    callback(value) {
+                                        return `R$ ${value}`;
+                                    }
+                                }
+                            },
+                            y: {
+                                grid: {
+                                    display: false
+                                },
+                                ticks: {
+                                    color: palette.text
+                                }
+                            }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label(context) {
+                                        return ` R$ ${Number(context.parsed.x || 0).toLocaleString('pt-BR', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2
+                                        })}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                expensesChart.data.labels = expenseLabels;
+                expensesChart.data.datasets[0].data = expenseValues;
+                expensesChart.data.datasets[0].backgroundColor = expenseColors;
+                expensesChart.options.scales.x.grid.color = palette.grid;
+                expensesChart.options.scales.x.ticks.color = palette.text;
+                expensesChart.options.scales.y.ticks.color = palette.text;
+                expensesChart.update();
+            }
+        }
     }
 
     // Atualizar o estado visual do grupo de entrada
@@ -198,6 +449,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         updateDisplay(totalExpenses, remainingBalance);
         updateColors(remainingBalance);
+        updateDashboard(totalExpenses, remainingBalance);
         saveToLocalStorage();
     }
 
@@ -286,7 +538,7 @@ document.addEventListener('DOMContentLoaded', function() {
             try {
                 const data = JSON.parse(savedData);
 
-                if (data.salary) {
+                if (data.salary !== undefined && data.salary !== null) {
                     salaryInput.value = data.salary;
                     updateInputGroupState(salaryInput);
                 }
@@ -300,8 +552,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
                     data.expenses.forEach((expense, index) => {
                         const field = expenseFields[index];
-                        if (field && expense.name) field.nameInput.value = expense.name;
-                        if (field && expense.value) field.valueInput.value = expense.value;
+                        if (field && expense.name !== undefined) field.nameInput.value = expense.name;
+                        if (field && expense.value !== undefined) field.valueInput.value = expense.value;
                         if (field && expense.status) {
                             field.statusSelect.value = expense.status;
                             updateExpenseItemStyle(field.statusSelect);

@@ -7,14 +7,88 @@
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <header>
-        <h1>Minhas Despesas</h1>
-        <p>Organize suas finanças de forma simples e visual.</p>
+        <div class="header-content">
+            <div>
+                <h1>Minhas Despesas</h1>
+                <p>Organize suas finanças de forma simples e visual.</p>
+            </div>
+            <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Alternar modo escuro" aria-pressed="false">
+                <i class="fa-solid fa-moon"></i>
+                <span>Modo escuro</span>
+            </button>
+        </div>
     </header>
-    
+
     <main>
+        <section class="dashboard-section">
+            <div class="dashboard-panel">
+                <div class="section-heading">
+                    <span class="section-kicker">Dashboard</span>
+                    <h2>Painel financeiro</h2>
+                    <p>Veja seus gastos, saldo e distribuição das despesas em tempo real.</p>
+                </div>
+
+                <div class="dashboard-metrics">
+                    <article class="metric-card metric-salary">
+                        <span>Salário informado</span>
+                        <strong id="dashboard-salary">R$ 0,00</strong>
+                    </article>
+                    <article class="metric-card metric-spent">
+                        <span>Despesas pagas</span>
+                        <strong id="dashboard-paid">R$ 0,00</strong>
+                    </article>
+                    <article class="metric-card metric-balance">
+                        <span>Saldo restante</span>
+                        <strong id="dashboard-balance">R$ 0,00</strong>
+                    </article>
+                    <article class="metric-card metric-pending">
+                        <span>Despesas pendentes</span>
+                        <strong id="dashboard-pending">0 itens</strong>
+                    </article>
+                </div>
+
+                <div class="budget-progress">
+                    <div class="budget-progress__header">
+                        <span>Uso do salário</span>
+                        <strong id="budget-progress-label">0%</strong>
+                    </div>
+                    <div class="budget-progress__bar">
+                        <div id="budget-progress-fill" class="budget-progress__fill"></div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <article class="chart-card">
+                        <div class="chart-card__header">
+                            <div>
+                                <span class="chart-card__eyebrow">Distribuição</span>
+                                <h3>Status das despesas</h3>
+                            </div>
+                        </div>
+                        <div class="chart-wrap">
+                            <canvas id="status-chart"></canvas>
+                        </div>
+                    </article>
+
+                    <article class="chart-card">
+                        <div class="chart-card__header">
+                            <div>
+                                <span class="chart-card__eyebrow">Ranking</span>
+                                <h3>Maiores despesas</h3>
+                            </div>
+                        </div>
+                        <div class="chart-wrap chart-wrap--wide">
+                            <canvas id="expenses-chart"></canvas>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
         <section class="income-section">
             <div class="input-group">
                 <label for="salary">Salário Líquido (R$)</label>
@@ -45,7 +119,7 @@
             <button id="clear-all-btn">🗑️ Limpar todos os campos</button>
         </section>
     </main>
-    
+
     <footer>
         <p>© 2025 Minhas Despesas. Todos os direitos reservados.</p>
     </footer>
