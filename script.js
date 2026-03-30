@@ -17,13 +17,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const budgetProgressFill = document.getElementById('budget-progress-fill');
     const budgetProgressLabel = document.getElementById('budget-progress-label');
     const statusChartCanvas = document.getElementById('status-chart');
-    const expensesChartCanvas = document.getElementById('expenses-chart');
+    const monthlyChartCanvas = document.getElementById('monthly-chart');
+    const yearFilterSelect = document.getElementById('year-filter');
 
     let expenseFields = [];
     const themeStorageKey = 'expenseCalculatorTheme';
     let dashboardState = null;
     let statusChart = null;
-    let expensesChart = null;
+    let monthlyChart = null;
 
     // Nomes padrão para as despesas
     const defaultExpenseNames = [
@@ -38,6 +39,14 @@ document.addEventListener('DOMContentLoaded', function() {
         'Saúde',
         'Outros'
     ];
+
+    function getTodayISODate() {
+        const today = new Date();
+        const year = today.getFullYear();
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const day = String(today.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
 
     // Inicializar campos de despesas
     initializeExpenseFields();
@@ -71,7 +80,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * @description Cria um campo de despesa individual e o adiciona ao DOM.
      * @param {string} defaultName O nome padrão para a despesa.
      */
-    function createExpenseField(defaultName = 'Nova Despesa') {
+    function createExpenseField(defaultName = 'Nova Despesa', defaultDate = getTodayISODate()) {
         const index = expenseFields.length;
         const expenseItem = document.createElement('div');
         expenseItem.className = 'expense-item';
@@ -90,6 +99,13 @@ document.addEventListener('DOMContentLoaded', function() {
                        step="0.01"
                        min="0">
             </div>
+            <div class="input-group expense-date">
+                <input type="date"
+                       id="expenseDate${index}"
+                       value="${defaultDate}"
+                       aria-label="Data da despesa"
+                       title="Data da despesa">
+            </div>
             <div class="input-group expense-status">
                 <select id="expenseStatus${index}">
                     <option value="pending">Pendente</option>
@@ -104,6 +120,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const newField = {
             nameInput: expenseItem.querySelector(`#expenseName${index}`),
             valueInput: expenseItem.querySelector(`#expenseValue${index}`),
+            dateInput: expenseItem.querySelector(`#expenseDate${index}`),
             statusSelect: expenseItem.querySelector(`#expenseStatus${index}`),
             removeBtn: expenseItem.querySelector('.remove-btn')
         };
@@ -117,6 +134,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         newField.valueInput.addEventListener('input', () => {
             updateInputGroupState(newField.valueInput);
+            updateCalculations();
+        });
+
+        newField.dateInput.addEventListener('change', () => {
             updateCalculations();
         });
         
@@ -175,6 +196,7 @@ document.addEventListener('DOMContentLoaded', function() {
         expenseFields.forEach((field, index) => {
             field.nameInput.id = `expenseName${index}`;
             field.valueInput.id = `expenseValue${index}`;
+            field.dateInput.id = `expenseDate${index}`;
             field.statusSelect.id = `expenseStatus${index}`;
         });
     }
@@ -185,6 +207,11 @@ document.addEventListener('DOMContentLoaded', function() {
         clearAllBtn.addEventListener('click', clearAllFields);
         addExpenseBtn.addEventListener('click', () => createExpenseField());
         themeToggleBtn.addEventListener('click', toggleTheme);
+        yearFilterSelect.addEventListener('change', () => {
+            if (dashboardState) {
+                renderDashboardCharts(dashboardState);
+            }
+        });
     }
 
     function initializeTheme() {
@@ -236,12 +263,47 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${Math.round(value)}%`;
     }
 
-    function truncateLabel(label, maxLength = 18) {
-        if (label.length <= maxLength) {
-            return label;
+    const MONTH_LABELS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    function getCurrentYear() {
+        return new Date().getFullYear();
+    }
+
+    function getSelectedYear() {
+        const selected = parseInt(yearFilterSelect.value, 10);
+        return Number.isFinite(selected) ? selected : getCurrentYear();
+    }
+
+    function getAvailableYears(expenseItems) {
+        const years = new Set([String(getCurrentYear())]);
+
+        expenseItems.forEach(item => {
+            if (item.date) {
+                years.add(item.date.slice(0, 4));
+            }
+        });
+
+        return [...years].sort((a, b) => Number(a) - Number(b));
+    }
+
+    function syncYearFilterOptions(expenseItems) {
+        if (!yearFilterSelect) {
+            return;
         }
 
-        return `${label.slice(0, maxLength - 1)}…`;
+        const previousValue = yearFilterSelect.value || String(getCurrentYear());
+        const years = getAvailableYears(expenseItems);
+
+        yearFilterSelect.innerHTML = '<option value="">Ano atual</option>';
+
+        years.forEach(year => {
+            const option = document.createElement('option');
+            option.value = year;
+            option.textContent = year;
+            yearFilterSelect.appendChild(option);
+        });
+
+        yearFilterSelect.value = years.includes(previousValue) ? previousValue : '';
     }
 
     function updateDashboard(totalExpenses, remainingBalance) {
@@ -259,7 +321,8 @@ document.addEventListener('DOMContentLoaded', function() {
             expenseItems: expenseFields.map(field => ({
                 name: field.nameInput.value || 'Despesa sem nome',
                 value: parseFloat(field.valueInput.value) || 0,
-                status: field.statusSelect.value
+                status: field.statusSelect.value,
+                date: field.dateInput.value || getTodayISODate()
             }))
         };
 
@@ -279,10 +342,37 @@ document.addEventListener('DOMContentLoaded', function() {
             statusChart = null;
         }
 
-        if (expensesChart) {
-            expensesChart.destroy();
-            expensesChart = null;
+        if (monthlyChart) {
+            monthlyChart.destroy();
+            monthlyChart = null;
         }
+    }
+
+    function buildMonthlyExpenseSeries(expenseItems, selectedYear) {
+        const totalsByMonth = Array(12).fill(0);
+
+        expenseItems.forEach(item => {
+            if (item.status !== 'paid' || !item.date) {
+                return;
+            }
+
+            const value = Number(item.value) || 0;
+            if (value <= 0) {
+                return;
+            }
+
+            const [yearPart, monthPart] = item.date.split('-').map(Number);
+            if (yearPart !== selectedYear || !monthPart || monthPart < 1 || monthPart > 12) {
+                return;
+            }
+
+            totalsByMonth[monthPart - 1] += value;
+        });
+
+        return {
+            labels: MONTH_LABELS,
+            values: totalsByMonth
+        };
     }
 
     function renderDashboardCharts(state) {
@@ -293,12 +383,10 @@ document.addEventListener('DOMContentLoaded', function() {
         const palette = getDashboardPalette();
         const statusLabels = ['Pagas', 'Pendentes'];
         const statusValues = [state.paidCount, state.pendingCount];
-        const topExpenses = [...state.expenseItems]
-            .sort((a, b) => b.value - a.value)
-            .slice(0, 6);
-        const expenseLabels = topExpenses.map(item => truncateLabel(item.name));
-        const expenseValues = topExpenses.map(item => item.value);
-        const expenseColors = topExpenses.map(item => item.status === 'paid' ? palette.paid : palette.pending);
+        const selectedYear = getSelectedYear();
+        const monthlySeries = buildMonthlyExpenseSeries(state.expenseItems, selectedYear);
+
+        syncYearFilterOptions(state.expenseItems);
 
         if (statusChartCanvas) {
             if (!statusChart) {
@@ -350,16 +438,17 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        if (expensesChartCanvas) {
-            if (!expensesChart) {
-                expensesChart = new Chart(expensesChartCanvas, {
+        if (monthlyChartCanvas) {
+            if (!monthlyChart) {
+                monthlyChart = new Chart(monthlyChartCanvas, {
                     type: 'bar',
                     data: {
-                        labels: expenseLabels,
+                        labels: monthlySeries.labels,
                         datasets: [{
-                            label: 'Valor (R$)',
-                            data: expenseValues,
-                            backgroundColor: expenseColors,
+                            label: 'Gastos por mês',
+                            data: monthlySeries.values,
+                            backgroundColor: palette.accent,
+                            borderColor: palette.accent,
                             borderRadius: 10,
                             borderSkipped: false
                         }]
@@ -367,26 +456,25 @@ document.addEventListener('DOMContentLoaded', function() {
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        indexAxis: 'y',
                         scales: {
                             x: {
-                                beginAtZero: true,
                                 grid: {
                                     color: palette.grid
+                                },
+                                ticks: {
+                                    color: palette.text
+                                }
+                            },
+                            y: {
+                                beginAtZero: true,
+                                grid: {
+                                    display: false
                                 },
                                 ticks: {
                                     color: palette.text,
                                     callback(value) {
                                         return `R$ ${value}`;
                                     }
-                                }
-                            },
-                            y: {
-                                grid: {
-                                    display: false
-                                },
-                                ticks: {
-                                    color: palette.text
                                 }
                             }
                         },
@@ -397,7 +485,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             tooltip: {
                                 callbacks: {
                                     label(context) {
-                                        return ` R$ ${Number(context.parsed.x || 0).toLocaleString('pt-BR', {
+                                        return ` R$ ${Number(context.parsed.y || 0).toLocaleString('pt-BR', {
                                             minimumFractionDigits: 2,
                                             maximumFractionDigits: 2
                                         })}`;
@@ -408,13 +496,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
             } else {
-                expensesChart.data.labels = expenseLabels;
-                expensesChart.data.datasets[0].data = expenseValues;
-                expensesChart.data.datasets[0].backgroundColor = expenseColors;
-                expensesChart.options.scales.x.grid.color = palette.grid;
-                expensesChart.options.scales.x.ticks.color = palette.text;
-                expensesChart.options.scales.y.ticks.color = palette.text;
-                expensesChart.update();
+                monthlyChart.data.labels = monthlySeries.labels;
+                monthlyChart.data.datasets[0].data = monthlySeries.values;
+                monthlyChart.data.datasets[0].backgroundColor = palette.accent;
+                monthlyChart.data.datasets[0].borderColor = palette.accent;
+                monthlyChart.options.scales.x.grid.color = palette.grid;
+                monthlyChart.options.scales.x.ticks.color = palette.text;
+                monthlyChart.options.scales.y.ticks.color = palette.text;
+                monthlyChart.update();
             }
         }
     }
@@ -433,8 +522,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Calcular totais e atualizar interface
     function updateCalculations() {
-        const salary = parseFloat(salaryInput.value) || 0;
-        let totalExpenses = 0;
+            const salary = parseFloat(salaryInput.value) || 0;
+            let totalExpenses = 0;
 
         expenseFields.forEach(field => {
             const value = parseFloat(field.valueInput.value) || 0;
@@ -523,6 +612,7 @@ document.addEventListener('DOMContentLoaded', function() {
             expenses: expenseFields.map(field => ({
                 name: field.nameInput.value,
                 value: field.valueInput.value,
+                date: field.dateInput.value,
                 status: field.statusSelect.value
             }))
         };
@@ -546,19 +636,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.expenses) {
                     expensesList.innerHTML = '';
                     expenseFields = [];
-                    data.expenses.forEach(expense => {
-                        createExpenseField(expense.name);
-                    });
+                data.expenses.forEach(expense => {
+                    createExpenseField(expense.name, expense.date || getTodayISODate());
+                });
 
-                    data.expenses.forEach((expense, index) => {
-                        const field = expenseFields[index];
-                        if (field && expense.name !== undefined) field.nameInput.value = expense.name;
-                        if (field && expense.value !== undefined) field.valueInput.value = expense.value;
-                        if (field && expense.status) {
-                            field.statusSelect.value = expense.status;
-                            updateExpenseItemStyle(field.statusSelect);
-                        }
-                    });
+                data.expenses.forEach((expense, index) => {
+                    const field = expenseFields[index];
+                    if (field && expense.name !== undefined) field.nameInput.value = expense.name;
+                    if (field && expense.value !== undefined) field.valueInput.value = expense.value;
+                    if (field && expense.date !== undefined) field.dateInput.value = expense.date || getTodayISODate();
+                    if (field && expense.status) {
+                        field.statusSelect.value = expense.status;
+                        updateExpenseItemStyle(field.statusSelect);
+                    }
+                });
                 }
                 updateCalculations();
             } catch (e) {

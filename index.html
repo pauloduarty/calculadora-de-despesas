@@ -77,12 +77,21 @@
                     <article class="chart-card">
                         <div class="chart-card__header">
                             <div>
-                                <span class="chart-card__eyebrow">Ranking</span>
-                                <h3>Maiores despesas</h3>
+                                <span class="chart-card__eyebrow">Mensal</span>
+                                <h3>Gastos por mês</h3>
+                                <p class="chart-card__description">Soma das despesas pagas mês a mês no ano selecionado.</p>
+                            </div>
+                        </div>
+                        <div class="chart-card__filters">
+                            <div class="filter-group">
+                                <label for="year-filter">Ano</label>
+                                <select id="year-filter">
+                                    <option value="">Ano atual</option>
+                                </select>
                             </div>
                         </div>
                         <div class="chart-wrap chart-wrap--wide">
-                            <canvas id="expenses-chart"></canvas>
+                            <canvas id="monthly-chart"></canvas>
                         </div>
                     </article>
                 </div>
